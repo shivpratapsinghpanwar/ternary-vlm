@@ -8,6 +8,7 @@ embeddings (default 64 = (16x16 patches at 256px) / pixel_shuffle 2x2 = 8x8... a
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 
 import torch
@@ -50,6 +51,8 @@ class TernaVLMConfig:
     quantize_act: bool = True
     quantize_lm: bool = True         # False = fp control backbone: no ternary quantizer, plain fp LoRA
     prequantize_frozen: bool = True  # r=0: store Q(W) once instead of re-quantizing 2.5B weights every forward
+    fp32_residual: bool = True       # keep the LM residual stream in fp32: BitNet's hidden states reach |h| ~ 6e4,
+                                     # which overflows fp16 (kernel v4 went non-finite at decoder layer 7)
     freeze_vision: bool = True
     image_token: str = "<image>"
     torch_dtype: torch.dtype = torch.float16   # T4 has no bf16; use fp16 + GradScaler
@@ -118,6 +121,12 @@ class TernaVLM(nn.Module):
         # product in fp32. No-op for LMs without ffn_sub_norm/act_fn (the fp control backbones).
         n_mlp = make_mlp_fp16_safe(self.lm)
         print(f"[TernaVLM] fp16-safe MLP forward on {n_mlp} layers")
+        if cfg.fp32_residual and cfg.torch_dtype == torch.float16:
+            # Embedding output in fp32 => every decoder layer's `residual + f(norm(residual))` stays fp32 while the
+            # linears/attention still run in fp16 under autocast (RMSNorm already normalises in fp32). Covers both
+            # the training path (_splice builds embeds through this module) and generate()'s decode steps.
+            self.lm.get_input_embeddings().register_forward_hook(lambda mod, inp, out: out.float())
+            print("[TernaVLM] fp32 residual stream (embedding output upcast)")
 
         # Vision encoder.
         self.vision = _from_pretrained(SiglipVisionModel, cfg.vision_name, cfg.torch_dtype)
@@ -152,16 +161,26 @@ class TernaVLM(nn.Module):
         embeds[mask] = image_embeds.reshape(-1, image_embeds.shape[-1]).to(embeds.dtype)
         return embeds
 
+    def autocast(self):
+        """fp16 weights on CUDA need autocast (fp32 residual stream + fp16 linears); the trainer's own autocast
+        nests harmlessly, and inference scripts get the same numerics without knowing about it."""
+        p = next(self.lm.parameters())
+        if p.is_cuda and p.dtype == torch.float16:
+            return torch.autocast(device_type="cuda", dtype=torch.float16)
+        return contextlib.nullcontext()
+
     def forward(self, input_ids, attention_mask, pixel_values, labels=None):
-        image_embeds = self.encode_images(pixel_values)
-        inputs_embeds = self._splice(input_ids, image_embeds)
-        return self.lm(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels, use_cache=False)
+        with self.autocast():
+            image_embeds = self.encode_images(pixel_values)
+            inputs_embeds = self._splice(input_ids, image_embeds)
+            return self.lm(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels, use_cache=False)
 
     @torch.no_grad()
     def generate(self, input_ids, attention_mask, pixel_values, **gen_kwargs):
-        image_embeds = self.encode_images(pixel_values)
-        inputs_embeds = self._splice(input_ids, image_embeds)
-        return self.lm.generate(inputs_embeds=inputs_embeds, attention_mask=attention_mask, **gen_kwargs)
+        with self.autocast():
+            image_embeds = self.encode_images(pixel_values)
+            inputs_embeds = self._splice(input_ids, image_embeds)
+            return self.lm.generate(inputs_embeds=inputs_embeds, attention_mask=attention_mask, **gen_kwargs)
 
     # ---- checkpointing: only the small trainable parts ---------------------------------
     def trainable_state_dict(self) -> dict:

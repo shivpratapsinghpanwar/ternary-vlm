@@ -146,7 +146,7 @@ def main():
             projector_hidden=m.get("projector_hidden", 2048), lora_r=m.get("lora_r", 0),
             lora_alpha=m.get("lora_alpha", 16.0), lora_mode=m.get("lora_mode", "joint"),
             quantize_act=m.get("quantize_act", True), quantize_lm=m.get("quantize_lm", True),
-            prequantize_frozen=m.get("prequantize_frozen", True),
+            prequantize_frozen=m.get("prequantize_frozen", True), fp32_residual=m.get("fp32_residual", True),
             freeze_vision=m.get("freeze_vision", True),
             torch_dtype=torch.float16 if device.type == "cuda" else torch.float32,  # fp16 matmuls on CPU are very slow
         ))
