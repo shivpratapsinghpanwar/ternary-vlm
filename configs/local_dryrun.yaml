@@ -1,0 +1,26 @@
+# CPU dry run with a tiny stand-in LM (same q/k/v/o/gate/up/down naming, 30 layers). Not a real model.
+model:
+  lm_name: HuggingFaceTB/SmolLM2-135M
+  vision_name: google/siglip2-base-patch16-256
+  pixel_shuffle: 2
+  projector_hidden: 256
+  lora_r: 4
+  quantize_act: true
+  freeze_vision: true
+data:
+  name: lmms-lab/LLaVA-ReCap-558K
+  split: train
+  max_samples: 12
+  max_len: 160
+  shuffle_buffer: 4
+train:
+  out_dir: ckpt/dryrun
+  batch_size: 2
+  grad_accum: 1
+  lr: 1.0e-3
+  warmup: 1
+  total_steps: 3
+  grad_checkpointing: true
+  log_every: 1
+  save_every: 2
+  workers: 0

@@ -1,0 +1,29 @@
+# Stage 1: projector only. LM frozen ternary, vision frozen. ~10-12 GPU-hours on 2x T4.
+model:
+  lm_name: microsoft/bitnet-b1.58-2B-4T-bf16
+  vision_name: google/siglip2-base-patch16-256
+  pixel_shuffle: 2          # 256 patches -> 64 image tokens
+  projector_hidden: 2048
+  lora_r: 0
+  quantize_act: true
+  freeze_vision: true
+data:
+  name: lmms-lab/LLaVA-ReCap-558K
+  split: train
+  max_samples: 300000
+  max_len: 256
+  seed: 0
+  shuffle_buffer: 800
+train:
+  out_dir: ckpt/stage1
+  batch_size: 8
+  grad_accum: 2             # effective 16 per GPU, 32 with DDP on 2 GPUs
+  lr: 1.0e-3
+  wd: 0.0
+  warmup: 200
+  total_steps: 9000
+  clip: 1.0
+  grad_checkpointing: true
+  log_every: 20
+  save_every: 300
+  workers: 0               # load in-process: forked streaming workers got OOM-killed on Kaggle

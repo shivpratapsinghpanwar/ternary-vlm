@@ -1,0 +1,8 @@
+torch>=2.3
+transformers>=4.52
+datasets>=2.20
+accelerate>=0.30
+pyyaml
+pillow
+sentencepiece
+huggingface_hub

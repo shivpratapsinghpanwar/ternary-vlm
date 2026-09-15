@@ -1,0 +1,31 @@
+# Stage 2: projector + ternary-LoRA on the LM. ~20-25 GPU-hours on 2x T4.
+model:
+  lm_name: microsoft/bitnet-b1.58-2B-4T-bf16
+  vision_name: google/siglip2-base-patch16-256
+  pixel_shuffle: 2
+  projector_hidden: 2048
+  lora_r: 32
+  lora_alpha: 64
+  quantize_act: true
+  freeze_vision: true
+data:
+  name: lmms-lab/LLaVA-OneVision-Data
+  subset: sharegpt4v(coco)   # start with one subset; add more via a mixture later
+  split: train
+  max_samples: 150000
+  max_len: 512
+  seed: 1
+  shuffle_buffer: 800
+train:
+  out_dir: ckpt/stage2
+  batch_size: 8
+  grad_accum: 4
+  lr: 2.0e-4
+  wd: 0.0
+  warmup: 100
+  total_steps: 4500
+  clip: 1.0
+  grad_checkpointing: true
+  log_every: 20
+  save_every: 200
+  workers: 0               # load in-process: forked streaming workers got OOM-killed on Kaggle

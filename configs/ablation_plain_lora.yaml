@@ -1,0 +1,36 @@
+# Ablation: plain (peft-style) LoRA on the frozen ternary LM. Identical to stage2.yaml except lora_mode.
+# Forward:  y = Qa(x)·Q(W)ᵀ + s·(x·Aᵀ)·Bᵀ  (delta in full precision).
+# Export:   merge() does the post-hoc merge-and-requantize Q(W + s·BA) -> the train/test mismatch we measure
+#           with ternavlm.ternary.mismatch_report / merge_fp (fp export vs ternary export).
+# Start from the same stage-1 checkpoint as stage2:  python train.py --config configs/ablation_plain_lora.yaml --init ckpt/stage1/latest.pt
+model:
+  lm_name: microsoft/bitnet-b1.58-2B-4T-bf16
+  vision_name: google/siglip2-base-patch16-256
+  pixel_shuffle: 2
+  projector_hidden: 2048
+  lora_r: 32
+  lora_alpha: 64
+  lora_mode: plain
+  quantize_act: true
+  quantize_lm: true
+  freeze_vision: true
+data:
+  name: lmms-lab/LLaVA-OneVision-Data
+  subset: sharegpt4v(coco)
+  split: train
+  max_samples: 150000
+  max_len: 512
+  seed: 1
+train:
+  out_dir: ckpt/ablation_plain_lora
+  batch_size: 8
+  grad_accum: 4
+  lr: 2.0e-4
+  wd: 0.0
+  warmup: 100
+  total_steps: 4500
+  clip: 1.0
+  grad_checkpointing: true
+  log_every: 20
+  save_every: 200
+  workers: 2

@@ -1,0 +1,41 @@
+# Control: matched full-precision backbone (fp16 Qwen2.5-1.5B-Instruct), same data / steps / LoRA rank as stage2.
+# quantize_lm: false  -> the ternary wrapping is not applied; TernaryLoRALinear runs with quantize_weight=False,
+#                        quantize_act=False, i.e. ordinary fp LoRA (y = x·Wᵀ + s·(x·Aᵀ)·Bᵀ). merge() == merge_fp().
+# Qwen2.5 uses the same q/k/v/o/gate/up/down projection names (q/k/v carry a bias, which is kept frozen), so the
+# replaced-layer assert (7 x num_hidden_layers of the loaded model) holds. SmolLM2-1.7B-Instruct also works here.
+# NOTE: the control's tokenizer has a different chat template (<|im_start|> ChatML) than BitNet. data.py uses the
+# generic "User: ...\nAssistant: ..." format terminated with the tokenizer's eos token, so it works unchanged;
+# the control is therefore trained on exactly the same token layout as the ternary runs (deliberately not the
+# model's native template, to keep the comparison matched). Stage 1 must be re-run for this backbone (its hidden
+# size differs from BitNet's), e.g. copy stage1.yaml with the model block below and --init from that checkpoint.
+model:
+  lm_name: Qwen/Qwen2.5-1.5B-Instruct
+  vision_name: google/siglip2-base-patch16-256
+  pixel_shuffle: 2
+  projector_hidden: 2048
+  lora_r: 32
+  lora_alpha: 64
+  lora_mode: plain
+  quantize_act: false
+  quantize_lm: false
+  freeze_vision: true
+data:
+  name: lmms-lab/LLaVA-OneVision-Data
+  subset: sharegpt4v(coco)
+  split: train
+  max_samples: 150000
+  max_len: 512
+  seed: 1
+train:
+  out_dir: ckpt/control_fp16_qwen1.5b
+  batch_size: 8
+  grad_accum: 4
+  lr: 2.0e-4
+  wd: 0.0
+  warmup: 100
+  total_steps: 4500
+  clip: 1.0
+  grad_checkpointing: true
+  log_every: 20
+  save_every: 200
+  workers: 2
