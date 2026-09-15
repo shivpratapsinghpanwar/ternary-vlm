@@ -36,11 +36,12 @@ def load_model(ckpt_path: str, device: str) -> TernaVLM:
 
 
 def build_prompt(model: TernaVLM, question: str) -> torch.Tensor:
-    """Same format as ternavlm/data.py: BOS + 'User: <image>*N\\n{q}<eot>Assistant: '"""
+    """Exactly the training format of ternavlm/data.py: BOS + 'User: <image>*N\\n{q}\\nAssistant:'.
+    The answer is trained as ' ' + text + EOS, so generation continues right after the colon."""
     tok = model.tokenizer
     img_block = model.cfg.image_token * model.num_image_tokens
     ids = [tok.bos_token_id] if tok.bos_token_id is not None else []
-    ids += tok.encode(f"User: {img_block}\n{question}{tok.eos_token}Assistant: ", add_special_tokens=False)
+    ids += tok.encode(f"User: {img_block}\n{question}\nAssistant:", add_special_tokens=False)
     return torch.tensor([ids])
 
 

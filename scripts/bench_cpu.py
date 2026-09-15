@@ -176,7 +176,7 @@ class TernaVLMBackend(Backend):
         ids = [tok.bos_token_id] if tok.bos_token_id is not None else []
         ids += tok.encode(f"User: {img_block}\n", add_special_tokens=False)
         ids += q_ids
-        ids += tok.encode(f"{tok.eos_token}Assistant: ", add_special_tokens=False)
+        ids += tok.encode("\nAssistant:", add_special_tokens=False)  # training format (ternavlm/data.py)
         self.ids = torch.tensor([ids])
         n_slots = int((self.ids == self.model.image_token_id).sum())
         assert n_slots == self.image_tokens, f"{n_slots} <image> slots, expected {self.image_tokens}"
@@ -252,7 +252,7 @@ class BitNetTextBackend(Backend):
         self.question_tokens = len(q_ids)
         ids = [tok.bos_token_id] if tok.bos_token_id is not None else []
         ids += tok.encode("User: ", add_special_tokens=False) + q_ids
-        ids += tok.encode(f"{tok.eos_token}Assistant: ", add_special_tokens=False)
+        ids += tok.encode("\nAssistant:", add_special_tokens=False)  # training format (ternavlm/data.py)
         self.ids = torch.tensor([ids])
         self.prompt_tokens = self.ids.shape[1]
         self.image_tokens = 0

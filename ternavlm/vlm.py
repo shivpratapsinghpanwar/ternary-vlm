@@ -49,6 +49,7 @@ class TernaVLMConfig:
     lora_mode: str = "joint"         # "joint" (ours) | "plain" (peft-style fp delta) | "none" (r=0)
     quantize_act: bool = True
     quantize_lm: bool = True         # False = fp control backbone: no ternary quantizer, plain fp LoRA
+    prequantize_frozen: bool = True  # r=0: store Q(W) once instead of re-quantizing 2.5B weights every forward
     freeze_vision: bool = True
     image_token: str = "<image>"
     torch_dtype: torch.dtype = torch.float16   # T4 has no bf16; use fp16 + GradScaler
@@ -101,7 +102,8 @@ class TernaVLM(nn.Module):
         if cfg.quantize_lm:
             # Ternary regime: TernaryLoRALinear quantizes W (+ s*BA in "joint" mode) and the activations.
             n = wrap_linears(self.lm, r=cfg.lora_r, alpha=cfg.lora_alpha, quantize_act=cfg.quantize_act,
-                             lora_mode=cfg.lora_mode, quantize_weight=True)
+                             lora_mode=cfg.lora_mode, quantize_weight=True,
+                             prequantize=cfg.prequantize_frozen and cfg.lora_r == 0)
         else:
             # Matched full-precision control (e.g. Qwen2.5-1.5B-Instruct / SmolLM2-1.7B-Instruct): the ternary
             # wrapping is NOT applied; the same module is used as an ordinary fp LoRA (unquantized W, fp delta).
@@ -112,6 +114,10 @@ class TernaVLM(nn.Module):
         print(f"[TernaVLM] replaced {n} linear layers with TernaryLoRALinear (r={cfg.lora_r}, mode={cfg.lora_mode}, "
               f"quantize_lm={cfg.quantize_lm}); expected {expected}")
         assert n == expected, f"replaced {n} linears, expected {expected}: layer names differ from q/k/v/o/gate/up/down"
+        # BitNet's relu^2 MLP overflows fp16 (kernels v1-v3 produced NaN on the first forward on T4); do that
+        # product in fp32. No-op for LMs without ffn_sub_norm/act_fn (the fp control backbones).
+        n_mlp = make_mlp_fp16_safe(self.lm)
+        print(f"[TernaVLM] fp16-safe MLP forward on {n_mlp} layers")
 
         # Vision encoder.
         self.vision = _from_pretrained(SiglipVisionModel, cfg.vision_name, cfg.torch_dtype)

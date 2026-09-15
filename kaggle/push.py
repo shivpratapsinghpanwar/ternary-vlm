@@ -97,6 +97,8 @@ try:
         print("init from", init, flush=True)
         if init is None:
             raise RuntimeError(f"stage {stage} needs a {META['init_from']} checkpoint but none is mounted")
+    # parquet shards are downloaded one at a time to the 20 GB working disk (see ternavlm/data.py)
+    os.environ["TERNAVLM_SHARD_DIR"] = "/kaggle/working/shards"
     launcher = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={n_gpu}"] if n_gpu > 1 else [sys.executable]
     cmd = launcher + ["train.py", "--config", f"configs/{stage}.yaml", "--resume", f"ckpt/{stage}/latest.pt",
                       "--time-budget-min", str(META["budget_min"])]
@@ -117,6 +119,7 @@ finally:
     with open("/kaggle/working/tv_status.json", "w") as f:
         json.dump({"status": status, "meta": META}, f)
     shutil.rmtree("/kaggle/working/repo", ignore_errors=True)
+    shutil.rmtree("/kaggle/working/shards", ignore_errors=True)   # never upload data shards as kernel output
     print("JOB STATUS:", status, flush=True)
 '''
 

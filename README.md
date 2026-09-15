@@ -43,7 +43,7 @@ image ─► SigLIP2-base (256px, frozen) ─► 256 patches ─► pixel-shuffl
 
 Checkpoints contain only projector + LoRA + optimizer state (a few hundred MB) and are pushed to a
 private Hugging Face model repo after every session. `train.py --resume` continues from the exact
-sample offset. The trainer stops itself at 11h20m so Kaggle never kills it mid-write.
+data cursor (epoch, shard, row). The trainer stops itself at 11h20m so Kaggle never kills it mid-write.
 
 ```bash
 # local unit tests (CPU, no transformers needed)
@@ -83,7 +83,7 @@ python scripts/export.py --ckpt ckpt/stage2/latest.pt --out export/ternavlm
 ```
 ternavlm/ternary.py   ternary + int8 quantizers, TernaryLoRALinear, wrap/merge helpers
 ternavlm/vlm.py       vision encoder + projector + LM glue, small trainable checkpoints
-ternavlm/data.py      streaming LLaVA-format data, resumable, label masking
+ternavlm/data.py      shard-local LLaVA-format data (one parquet shard on disk at a time), exact resume, label masking
 train.py              fp16 trainer, resume, time budget, torchrun DDP
 kaggle/run_stage.py   one-file Kaggle session driver with Hub checkpoint sync
 scripts/export.py     merge LoRA exactly, save HF checkpoints for GGUF conversion

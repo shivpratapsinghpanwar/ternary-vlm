@@ -12,7 +12,7 @@ data:
   name: lmms-lab/LLaVA-OneVision-Data
   subset: sharegpt4v(coco)   # start with one subset; add more via a mixture later
   split: train
-  max_samples: 150000
+  max_samples: 150000       # sharegpt4v(coco) has ~50k rows: this is ~3 epochs (the loader cycles shards per epoch)
   max_len: 512
   seed: 1
   shuffle_buffer: 800

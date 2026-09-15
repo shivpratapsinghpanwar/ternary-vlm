@@ -237,7 +237,7 @@ ablation. TextVQA is open-vocabulary and is evaluated only generatively.
 The vision encoder is frozen throughout. Activation quantization $Q_a$ is active in both stages so
 that the frozen LM in stage 1 already sees the deployed numerics. Checkpoints contain only projector,
 LoRA, and optimizer state (a few hundred MB) and are synchronized to a Hugging Face repository at the
-end of each Kaggle session; training resumes from the exact sample offset.
+end of each Kaggle session; training resumes from the exact data cursor (epoch, shard, row).
 
 **Compute budget as a design constraint.** All training was performed on Kaggle's free tier: two
 NVIDIA T4 GPUs (16 GB each, no bf16, no flash attention), sessions capped at 12 h and a quota of
@@ -501,7 +501,7 @@ future work includes [ternary projector/encoder, AnyRes tiling, larger instructi
       for a 0.5 GPU-h sanity run.
 - [ ] Base checkpoints and revisions: `microsoft/bitnet-b1.58-2B-4T-bf16` [revision],
       `google/siglip2-base-patch16-256` [revision]; `transformers` [version], `torch` [version].
-- [ ] Data: `lmms-lab/LLaVA-ReCap-558K` (first 300k of the shuffled stream, seed 0);
+- [ ] Data: `lmms-lab/LLaVA-ReCap-558K` (first 300k rows of the seed-0 shard order, buffer-shuffled);
       `lmms-lab/LLaVA-OneVision-Data` subsets [list], 150k samples, seed 1; exact sample-order
       reproducibility via the resumable loader.
 - [ ] Prompt format: [chat template of the base model / `User:`–`Assistant:` fallback], label masking

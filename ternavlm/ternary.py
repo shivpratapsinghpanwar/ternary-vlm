@@ -93,6 +93,7 @@ class TernaryLoRALinear(nn.Module):
         self.quantize_act = quantize_act
         self.quantize_weight = quantize_weight
         self.lora_mode = lora_mode
+        self.prequantized = False   # r=0 only: master weight already replaced by Q(W), see prequantize()
 
         # Master weight: frozen. We keep the original Parameter object so state_dict names line up.
         self.weight = base.weight
@@ -113,6 +114,24 @@ class TernaryLoRALinear(nn.Module):
             self.register_parameter("lora_B", None)
             self.lora_dropout = nn.Identity()
 
+    @torch.no_grad()
+    def prequantize(self) -> bool:
+        """r=0 only: replace the frozen master weight by Q(W) once, so forward skips the per-call quantizer.
+        Q(W) is exact in fp16 (three values) and the forward is bit-identical to quantizing every call; this
+        removes ~8 full passes over 2.5B weights per forward (and a 10 GB fp32 temporary) in stage 1.
+        Not idempotent to re-quantize (the absmean scale would shrink), hence the flag. Returns True if applied."""
+        if self.r > 0 or not self.quantize_weight or self.prequantized:
+            return False
+        self.weight.data = ternary_quant(self.weight.data)
+        self.prequantized = True
+        return True
+
+    def _q_export(self, w: torch.Tensor) -> torch.Tensor:
+        """Exact quantizer for export paths; a no-op when the weight is already Q(W)."""
+        if not self.quantize_weight or self.prequantized:
+            return w
+        return ternary_quant(w)
+
     def effective_weight(self) -> torch.Tensor:
         """Full-precision merged weight W + s*BA (what merge_fp exports; merge quantizes it)."""
         if self.r > 0:
@@ -126,10 +145,9 @@ class TernaryLoRALinear(nn.Module):
     def train_weight(self) -> torch.Tensor:
         """The weight the forward pass effectively uses (exact quantizer values, for the mismatch report).
         joint: Q(W + s*BA)   plain: Q(W) + s*BA   none / r=0: Q(W)."""
-        q = ternary_quant if self.quantize_weight else (lambda w: w)
         if self.r > 0 and self.lora_mode == "plain":
-            return q(self.weight.float()) + self.scaling * (self.lora_B @ self.lora_A)
-        return q(self.effective_weight().float())
+            return self._q_export(self.weight.float()) + self.scaling * (self.lora_B @ self.lora_A)
+        return self._q_export(self.effective_weight().float())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_in = x
@@ -148,7 +166,7 @@ class TernaryLoRALinear(nn.Module):
             return F.linear(x, w, self.bias) + delta
         # "joint" (and "none"/r=0): the delta is fused into the weight before quantization, so there is no
         # separate delta path and LoRA dropout is left as identity (kept only for API compatibility).
-        w = self._q(self.effective_weight())
+        w = self.weight if self.prequantized else self._q(self.effective_weight())
         if not torch.is_autocast_enabled() and w.dtype != x.dtype:
             w = w.to(x.dtype)
         return F.linear(x, w, self.bias)
@@ -165,8 +183,7 @@ class TernaryLoRALinear(nn.Module):
         """Return a plain nn.Linear whose weight is the *quantized* merged weight Q(W + s*BA).
         joint: exact export (bit-for-bit what was trained). plain: post-hoc merge-and-requantize, i.e. the
         train/test mismatch under study. quantize_weight=False: nothing to quantize, same as merge_fp()."""
-        w = self.effective_weight()
-        return self._linear_with(ternary_quant(w) if self.quantize_weight else w)
+        return self._linear_with(self._q_export(self.effective_weight()))
 
     @torch.no_grad()
     def merge_fp(self) -> nn.Linear:
@@ -176,7 +193,7 @@ class TernaryLoRALinear(nn.Module):
 
     def extra_repr(self) -> str:
         return (f"in={self.in_features}, out={self.out_features}, r={self.r}, mode={self.lora_mode}, "
-                f"w_q={self.quantize_weight}, act_q={self.quantize_act}")
+                f"w_q={self.quantize_weight}, act_q={self.quantize_act}, preq={self.prequantized}")
 
 
 DEFAULT_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
@@ -191,6 +208,7 @@ def wrap_linears(
     lora_mode: str = "joint",
     quantize_weight: bool = True,
     dropout: float = 0.0,
+    prequantize: bool = False,
 ) -> int:
     """
     Replace every nn.Linear (or BitLinear-like module exposing .weight/.in_features/.out_features)
@@ -200,6 +218,7 @@ def wrap_linears(
     linear layers, wrapping them here would double-quantize. We therefore replace the module
     entirely rather than wrapping its forward, and we read only its .weight / .bias.
     lora_mode / quantize_weight are passed through (quantize_weight=False -> plain fp LoRA control).
+    prequantize=True (r=0 only) stores Q(W) in place of the latent weight, see TernaryLoRALinear.prequantize().
     Returns the number of replaced modules.
     """
     targets = set(targets)
@@ -211,9 +230,11 @@ def wrap_linears(
                 base.weight = child.weight
                 if getattr(child, "bias", None) is not None:
                     base.bias = child.bias
-                setattr(module, child_name, TernaryLoRALinear(
-                    base, r=r, alpha=alpha, dropout=dropout, quantize_act=quantize_act,
-                    lora_mode=lora_mode, quantize_weight=quantize_weight))
+                new = TernaryLoRALinear(base, r=r, alpha=alpha, dropout=dropout, quantize_act=quantize_act,
+                                        lora_mode=lora_mode, quantize_weight=quantize_weight)
+                if prequantize:
+                    new.prequantize()
+                setattr(module, child_name, new)
                 replaced += 1
     return replaced
 
@@ -241,7 +262,7 @@ def mismatch_report(model: nn.Module) -> dict:
         if not isinstance(mod, TernaryLoRALinear):
             continue
         w_fp = mod.effective_weight().float()
-        w_q = ternary_quant(w_fp) if mod.quantize_weight else w_fp
+        w_q = mod._q_export(w_fp)
         layers[name] = {
             "export_vs_fp": _rel_l2(w_q, w_fp),
             "export_vs_train": _rel_l2(w_q, mod.train_weight()),

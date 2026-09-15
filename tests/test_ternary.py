@@ -219,3 +219,20 @@ if __name__ == "__main__":
     fns = [v for k, v in globals().items() if k.startswith("test_")]
     for f in fns:
         f(); print("ok ", f.__name__)
+
+
+def test_prequantize_matches_per_call_quantizer():
+    """r=0: storing Q(W) once must give the same forward and export as quantizing on every call."""
+    torch.manual_seed(0)
+    base = nn.Linear(16, 8, bias=False)
+    a = TernaryLoRALinear(nn.Linear(16, 8, bias=False), r=0)
+    a.weight.data.copy_(base.weight.data)
+    b = TernaryLoRALinear(nn.Linear(16, 8, bias=False), r=0)
+    b.weight.data.copy_(base.weight.data)
+    assert b.prequantize() and not b.prequantize()  # applied once, then a no-op
+    x = torch.randn(3, 16)
+    assert torch.allclose(a(x), b(x))
+    assert torch.equal(a.merge().weight, b.merge().weight)
+    assert torch.equal(a.train_weight(), b.train_weight())
+    c = TernaryLoRALinear(nn.Linear(16, 8, bias=False), r=4)
+    assert not c.prequantize()  # LoRA layers keep the latent weight
