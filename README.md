@@ -1,11 +1,13 @@
 # TernaVLM: a 1.58-bit vision-language model that runs on a CPU
 
-> Status: scaffold. Layer code is unit-tested on CPU; training has not run yet. Follow the plan below.
+> Status: training. The pipeline is verified on Kaggle T4x2 (smoke run: finite, decreasing loss); stage 1 is running.
 
 Every small VLM today (SmolVLM, Moondream, FastVLM) ships in fp16 or int4/int8. BitNet-style
 **ternary** language models (weights in {-1, 0, +1}) already run fast on CPUs with integer-only
-kernels, but nobody has released a ternary VLM. This repo attaches a vision encoder to a
-pre-trained ternary LM and fine-tunes it **without leaving the ternary regime**.
+kernels. Ternary VLMs exist (LLaVaOLMoBitnet1B, BitVLA, Ternary Bonsai; see docs/RELATED_WORK.md),
+but all of them update the full set of latent weights with QAT. This repo attaches a vision encoder to a
+pre-trained ternary LM and adapts it **parameter-efficiently, without leaving the ternary regime**: only a
+projector and LoRA adapters are trained, and the exported model is bit-for-bit the ternary model that was trained.
 
 ## Why this is not "just LoRA on BitNet"
 
