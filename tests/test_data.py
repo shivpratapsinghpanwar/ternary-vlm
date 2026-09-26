@@ -148,3 +148,45 @@ def test_collate_carries_state(shards):
     b = collate(exs, pad_id=0)
     assert b["input_ids"].shape[0] == 3 and b["data_state"] == exs[-1][STATE_KEY]
     assert (b["labels"][b["attention_mask"] == 0] == -100).all()
+
+
+def test_shard_cache_rank0_downloads_others_wait(shards, tmp_path):
+    """Two 'ranks' sharing one shard dir: only rank 0 fetches; rank 1 blocks until the done-marker exists and
+    never triggers a fetch of its own (the hf_hub_download unlink race that killed stage-1 kernel v6)."""
+    import shutil
+    import threading
+    import time
+    from ternavlm.data import ShardCache
+
+    files, _ = shards
+    d = str(tmp_path / "cache")
+    calls = []
+
+    class Fake(ShardCache):
+        def _fetch(self, i):
+            calls.append((self.rank, i))
+            time.sleep(0.3)  # long enough for rank 1 to be waiting
+            dst = self.path(i)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy(files[i], dst)
+            return dst
+
+    names = [f"data/shard{i}.parquet" for i in range(len(files))]
+    c0 = Fake("repo", names, d, keep=1, rank=0)
+    c1 = Fake("repo", names, d, keep=1, rank=1)
+    got = {}
+    t = threading.Thread(target=lambda: got.setdefault(1, c1.get(0, timeout=10)))
+    t.start()
+    time.sleep(0.05)
+    assert not got  # rank 1 is blocked, nothing to read yet
+    got[0] = c0.get(0)
+    t.join(5)
+    assert got[0] == got[1] == os.path.join(d, names[0]) and os.path.exists(got[0])
+    assert calls == [(0, 0)]  # exactly one download, by rank 0
+    c0.prefetch(1); c1.prefetch(1)
+    c0._threads[1].join()
+    assert calls == [(0, 0), (0, 1)] and c1.get(1, timeout=5)
+    c1.release(0)  # no-op on rank 1
+    assert os.path.exists(got[0])
+    c0.release(0)
+    assert not os.path.exists(got[0]) and not os.path.exists(got[0] + ".done")

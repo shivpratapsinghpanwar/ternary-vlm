@@ -1,7 +1,7 @@
 # TernaVLM Handoff
 
 **Repo:** https://github.com/shivpratapsinghpanwar/ternary-vlm (private)  
-**Kaggle:** shivpratap0007/ternavlm-runner (kernel v5 = smoke passed; v6 = stage 1 session 1)  
+**Kaggle:** shivpratap0007/ternavlm-runner (v5 smoke passed; v6 stage 1 failed on a download race; v7 = stage 1 retry)  
 **Status:** see "Current state" at the bottom (updated per session).
 
 ## What's Built
@@ -56,7 +56,31 @@ lower it or accept more sessions if v5 is slower), `gpu xxG` < 14 G.
 - Shards land in /kaggle/working/shards and are deleted before the kernel ends (never uploaded)
 - Quota: ~30 GPU-h/week; each smoke run costs ~25 min of T4x2
 
-## Local machine caveats
+## Running on the local GPU machines (RTX 3080 10 GB, RTX 2050 4 GB)
+
+```bash
+git clone https://github.com/shivpratapsinghpanwar/ternary-vlm && cd ternary-vlm
+pip install -r requirements.txt pytest          # plus a CUDA build of torch for your driver
+python -m pytest tests -q                       # 37 tests, no GPU or downloads needed
+set TERNAVLM_SHARD_DIR=D:	ernavlm_shards       # any disk with >= 2 GB free (3 x 500 MB shards)
+# fetch the latest checkpoints from the private Kaggle dataset (needs ~/.kaggle credentials, see boulder runner):
+kaggle datasets download shivpratap0007/ternavlm-ckpt -p ckpt --unzip     # -> ckpt/<stage>/latest.pt
+python train.py --config configs/stage1.yaml --resume ckpt/stage1/latest.pt --time-budget-min 600
+python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --question "Describe the image."
+```
+
+- Single GPU needs no torchrun; the trainer detects `WORLD_SIZE` unset. Same checkpoints/cursor as Kaggle.
+- **3080 (10 GB):** the fp16 LM is 5 GB; the T4 smoke run used 7.1 GB at batch 4 with r=8 LoRA. stage1.yaml
+  (batch 8, r=0) should fit; if it OOMs use `batch_size: 4, grad_accum: 4` (same effective batch). Ampere
+  supports bf16, which would remove the fp16 overflow workarounds entirely, but the code currently hardcodes
+  fp16 on CUDA (`torch_dtype` in train.py); switching to bf16 is a one-line follow-up if you train there.
+- **2050 (4 GB):** cannot hold the 2B BitNet in fp16. Use it for tests, `configs/local_dryrun.yaml`
+  (SmolLM2-135M stand-in), eval-script development, and the export / llama.cpp CPU path.
+- `runs/` and `ckpt/` are gitignored, so kernel logs and checkpoints stay per machine; the run-dir names in
+  "Current state" below are what you pass to `push.py --fetch`. `kaggle/push.py` works from any machine that
+  has the Kaggle credentials.
+
+## Local machine caveats (the 4 GB-RAM laptop)
 
 - 4 GB RAM: the 2B BitNet cannot be loaded locally. Use `configs/local_dryrun.yaml` (SmolLM2-135M stand-in);
   set `TERNAVLM_SHARD_DIR` to a scratch dir (one ReCap shard is ~500 MB).
@@ -68,8 +92,12 @@ lower it or accept more sessions if v5 is slower), `gpu xxG` < 14 G.
   rss flat at 4.4 G, 1.7 samp/s (r=8 joint LoRA, batch 4 x 2 GPUs), flip fraction 0.35-0.43 at lr 5e-4
   (worth a look for the paper: tiny deltas, drel ~1e-4, already flip a third of the ternary states).
   Checkpoint versioned to shivpratap0007/ternavlm-ckpt as smoke/latest.pt (run dir runs/20260915T085432Z_smoke).
-- 2026-09-15: kernel v6 = stage 1, session 1, launched with `push.py stage1 --no-wait` (680 min budget).
-  When it completes: `push.py --fetch runs/20260915T091912Z_stage1` versions stage1/latest.pt, then rerun
+- 2026-09-15: kernel v6 (stage 1, session 1) FAILED at its first shard: `FileNotFoundError` on
+  train-00014 right after download. Root cause: both DDP ranks called hf_hub_download on the same file; the
+  second caller unlinks the file the first just placed before re-downloading it. Fixed 2026-09-26 in data.py
+  (rank 0 is the only downloader, writes `<shard>.done`, other ranks wait). Single-GPU machines were never affected.
+- 2026-09-26: kernel v7 = stage 1, session 1 (retry) launched with `push.py stage1 --no-wait` (680 min budget).
+  When it completes: `push.py --fetch runs/<20260926T..._stage1>` versions stage1/latest.pt, then rerun
   `push.py stage1` to resume until the log says "finished". FIRST THING TO CHECK in its log: `samp/s` at
   step 20-100. stage1.yaml (9000 steps x 32 = 288k samples) needs ~7 samp/s to finish in one 11 h session;
   at the smoke's 1.7 samp/s it would take ~4 sessions. If it is below ~4 samp/s, cut `max_samples`/`total_steps`

@@ -20,7 +20,7 @@ Known good sources:
     stage 2: lmms-lab/LLaVA-OneVision-Data, subset e.g. "sharegpt4v(coco)"   (shards under <subset>/)
 
 DDP: every rank reads the same shard sequence and takes rows with global_row % world_size == rank, so ranks stay
-in lockstep and share one download (hf_hub_download serialises concurrent downloads of a file with a lock).
+in lockstep and share one download: rank 0 fetches and writes a done-marker, the other ranks wait for it.
 """
 
 from __future__ import annotations
@@ -83,10 +83,16 @@ def list_shards(name: str, subset: str | None = None, split: str = "train") -> l
 
 
 class ShardCache:
-    """Downloads parquet shards of a HF dataset repo to a local dir one at a time, prefetching the next in a thread."""
+    """Downloads parquet shards of a HF dataset repo to a local dir one at a time, prefetching the next in a thread.
 
-    def __init__(self, repo: str, files: list[str], local_dir: str, keep: int = 2, local: bool = False):
-        self.repo, self.files, self.dir, self.keep, self.local = repo, list(files), local_dir, keep, local
+    Only rank 0 downloads; other ranks wait for a `<file>.done` marker. Two ranks calling hf_hub_download on the
+    same file is NOT safe: the second caller, once it gets the lock, unlinks the file the first one just placed
+    ("delete outdated file first") and re-downloads it, which is exactly how stage-1 kernel v6 died with
+    FileNotFoundError on its first shard.
+    """
+
+    def __init__(self, repo: str, files: list[str], local_dir: str, keep: int = 2, local: bool = False, rank: int = 0):
+        self.repo, self.files, self.dir, self.keep, self.local, self.rank = repo, list(files), local_dir, keep, local, rank
         self._threads: dict[int, threading.Thread] = {}
         if not local:
             os.makedirs(local_dir, exist_ok=True)
@@ -104,15 +110,37 @@ class ShardCache:
 
         return hf_hub_download(self.repo, self.files[i], repo_type="dataset", local_dir=self.dir)
 
-    def get(self, i: int) -> str:
-        """Blocking: returns the local path of shard i (downloads if missing, waits for a running prefetch)."""
+    def _marker(self, i: int) -> str:
+        return self.path(i) + ".done"
+
+    def _ready(self, i: int) -> bool:
+        return os.path.exists(self._marker(i)) and os.path.exists(self.path(i))
+
+    def _mark(self, i: int) -> None:
+        with open(self._marker(i), "w") as f:
+            f.write("ok")
+
+    def get(self, i: int, timeout: float = 7200) -> str:
+        """Blocking: returns the local path of shard i. Rank 0 downloads it (or waits for its own prefetch thread);
+        other ranks wait until rank 0 has written the done-marker."""
+        if self.local:
+            return self.files[i]
+        if self.rank != 0:
+            t0 = time.time()
+            while not self._ready(i):
+                if time.time() - t0 > timeout:
+                    raise RuntimeError(f"rank {self.rank}: timed out waiting for rank 0 to download {self.files[i]}")
+                time.sleep(2)
+            return self.path(i)
         t = self._threads.pop(i, None)
         if t is not None:
             t.join()
         err = None
         for attempt in range(5):
             try:
-                return self._fetch(i)
+                p = self._fetch(i)
+                self._mark(i)
+                return p
             except Exception as e:  # network hiccup: retry, the download resumes/reuses what is on disk
                 err = e
                 print(f"[data] download of {self.files[i]} failed (attempt {attempt + 1}/5): {e}", flush=True)
@@ -120,9 +148,9 @@ class ShardCache:
         raise RuntimeError(f"could not download {self.files[i]}") from err
 
     def prefetch(self, i: int) -> None:
-        if self.local or i in self._threads or not (0 <= i < len(self.files)):
+        if self.local or self.rank != 0 or i in self._threads or not (0 <= i < len(self.files)):
             return
-        if os.path.exists(self.path(i)):
+        if self._ready(i):
             return
         t = threading.Thread(target=self._quiet_fetch, args=(i,), daemon=True, name=f"shard-prefetch-{i}")
         t.start()
@@ -131,17 +159,19 @@ class ShardCache:
     def _quiet_fetch(self, i: int) -> None:
         try:
             self._fetch(i)
+            self._mark(i)
         except Exception as e:  # get() will retry synchronously
             print(f"[data] prefetch of {self.files[i]} failed: {e}", flush=True)
 
     def release(self, i: int) -> None:
-        """Delete shard i from disk (only for shards well behind the cursor; only rank 0 should call this)."""
-        if self.local or not (0 <= i < len(self.files)):
+        """Delete shard i (and its marker) from disk; only rank 0, only for shards well behind the cursor."""
+        if self.local or self.rank != 0 or not (0 <= i < len(self.files)):
             return
-        try:
-            os.remove(self.path(i))
-        except FileNotFoundError:
-            pass
+        for p in (self._marker(i), self.path(i)):
+            try:
+                os.remove(p)
+            except FileNotFoundError:
+                pass
 
 
 def _to_turns(row: dict, rng: random.Random, prompts) -> list[tuple[str, str]]:
@@ -220,7 +250,7 @@ class LlavaStream(IterableDataset):
         self.rng = random.Random(cfg.seed * 7919 + rank)
         self.files = list(cfg.local_files) if cfg.local_files else list_shards(cfg.name, cfg.subset, cfg.split)
         self.cache = ShardCache(cfg.name, self.files, cfg.shard_dir or default_shard_dir(), keep=cfg.keep_shards,
-                                local=bool(cfg.local_files))
+                                local=bool(cfg.local_files), rank=rank)
         self.dropped = 0
 
     # ---- state -------------------------------------------------------------------
