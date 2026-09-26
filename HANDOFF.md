@@ -97,7 +97,7 @@ python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --qu
   second caller unlinks the file the first just placed before re-downloading it. Fixed 2026-09-26 in data.py
   (rank 0 is the only downloader, writes `<shard>.done`, other ranks wait). Single-GPU machines were never affected.
 - 2026-09-26: kernel v7 = stage 1, session 1 (retry) launched with `push.py stage1 --no-wait` (680 min budget).
-  When it completes: `push.py --fetch runs/<20260926T..._stage1>` versions stage1/latest.pt, then rerun
+  When it completes: `push.py --fetch runs/20260926T070302Z_stage1` versions stage1/latest.pt, then rerun
   `push.py stage1` to resume until the log says "finished". FIRST THING TO CHECK in its log: `samp/s` at
   step 20-100. stage1.yaml (9000 steps x 32 = 288k samples) needs ~7 samp/s to finish in one 11 h session;
   at the smoke's 1.7 samp/s it would take ~4 sessions. If it is below ~4 samp/s, cut `max_samples`/`total_steps`
