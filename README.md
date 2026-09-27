@@ -3,8 +3,8 @@
 > **Ongoing research project. Paper in preparation.** This repository is public so the work can be followed as
 > it happens: the training pipeline is verified (finite, decreasing loss on Kaggle T4x2) and stage 1 is running,
 > but there are **no released weights, no benchmark numbers, and no claims yet**. Code, configs and docs will
-> change without notice until the paper is out. Licensed **CC BY-NC 4.0** (non-commercial); see [LICENSE](LICENSE).
-> For commercial use or collaboration, open an issue.
+> change without notice until the paper is out. Code is licensed **Apache-2.0** (see [LICENSE](LICENSE)); released
+> weights, when they exist, will carry their own license. For collaboration, open an issue.
 
 Every small VLM today (SmolVLM, Moondream, FastVLM) ships in fp16 or int4/int8. BitNet-style
 **ternary** language models (weights in {-1, 0, +1}) already run fast on CPUs with integer-only
