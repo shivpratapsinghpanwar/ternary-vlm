@@ -1,7 +1,7 @@
 # TernaVLM: a 1.58-bit vision-language model that runs on a CPU
 
 > **Ongoing research project. Paper in preparation.** This repository is public so the work can be followed as
-> it happens: the training pipeline is verified (finite, decreasing loss on Kaggle T4x2) and stage 1 is running,
+> it happens: the training pipeline is verified on Kaggle T4x2 and stage 1 (projector) is past step 4100/9000,
 > but there are **no released weights, no benchmark numbers, and no claims yet**. Code, configs and docs will
 > change without notice until the paper is out. Code is licensed **Apache-2.0** (see [LICENSE](LICENSE)); released
 > weights, when they exist, will carry their own license. For collaboration, open an issue.
@@ -79,7 +79,7 @@ python scripts/export.py --ckpt ckpt/stage2/latest.pt --out export/ternavlm
 ## Roadmap
 
 - [x] smoke run on Kaggle (finite, decreasing loss)
-- [ ] stage 1 (running) + stage 2
+- [ ] stage 1 (4100/9000 steps, loss 1.78 -> 1.06) + stage 2
 - [ ] ablations: plain fp16 LoRA (merge-and-requantize), projector-only, fp16 Qwen2.5-1.5B control
 - [ ] export to GGUF (TQ2_0) and run with llama.cpp `mtmd` on a laptop CPU and a Raspberry Pi 5
 - [ ] benchmark table: tokens/s and memory vs SmolVLM-256M / Moondream on the same CPU
@@ -99,6 +99,27 @@ configs/*.yaml        smoke / stage1 / stage2 / ablations / local CPU dry runs
 docs/                 PAPER.md (draft skeleton), RELATED_WORK.md (novelty assessment), EXPORT.md
 HANDOFF.md            current status and per-machine instructions
 ```
+
+## Built on / please also cite
+
+This project fine-tunes and evaluates other people's models and data; if you use it, cite them too.
+`docs/RELATED_WORK.md` has the full survey with links.
+
+- **BitNet b1.58 2B4T** (the ternary LM): Ma et al., *BitNet b1.58 2B4T Technical Report*, [arXiv:2504.12285](https://arxiv.org/abs/2504.12285);
+  weights `microsoft/bitnet-b1.58-2B-4T-bf16` (MIT). The 1.58-bit scheme: Ma et al., *The Era of 1-bit LLMs*, [arXiv:2402.17764](https://arxiv.org/abs/2402.17764).
+- **SigLIP 2** (vision encoder): Tschannen et al., [arXiv:2502.14786](https://arxiv.org/abs/2502.14786); weights `google/siglip2-base-patch16-256` (Apache-2.0).
+- **LLaVA** recipe, projector + `<image>` splicing, and data: Liu et al., *Visual Instruction Tuning*, [arXiv:2304.08485](https://arxiv.org/abs/2304.08485);
+  stage-1 data `lmms-lab/LLaVA-ReCap-558K` and stage-2 data `lmms-lab/LLaVA-OneVision-Data`, Li et al., *LLaVA-OneVision*, [arXiv:2408.03326](https://arxiv.org/abs/2408.03326).
+- **Pixel shuffle** token reduction: Chen et al., *InternVL 1.5*, [arXiv:2404.16821](https://arxiv.org/abs/2404.16821).
+- **LoRA**: Hu et al., [arXiv:2106.09685](https://arxiv.org/abs/2106.09685). Quantization-aware LoRA with the adapter *inside* the quantizer, which
+  `TernaryLoRALinear` follows for the ternary case: **L4Q**, Jeon et al., [arXiv:2402.04902](https://arxiv.org/abs/2402.04902) and
+  **LR-QAT**, Bondarenko et al., [arXiv:2406.06385](https://arxiv.org/abs/2406.06385). Straight-through estimator: Bengio et al., [arXiv:1308.3432](https://arxiv.org/abs/1308.3432).
+- **Prior ternary VLMs** we compare against: **BitVLA**, Wang et al., [arXiv:2506.07530](https://arxiv.org/abs/2506.07530);
+  **LLaVaOLMoBitnet1B**, Sundaram & Iyer, [arXiv:2408.13402](https://arxiv.org/abs/2408.13402).
+- **Evaluation data**: POPE ([arXiv:2305.10355](https://arxiv.org/abs/2305.10355)), TextVQA ([arXiv:1904.08920](https://arxiv.org/abs/1904.08920)),
+  GQA ([arXiv:1902.09506](https://arxiv.org/abs/1902.09506)), ScienceQA ([arXiv:2209.09513](https://arxiv.org/abs/2209.09513)), MME ([arXiv:2306.13394](https://arxiv.org/abs/2306.13394)), via the `lmms-lab` mirrors.
+- **Inference**: [llama.cpp](https://github.com/ggml-org/llama.cpp) (GGUF export, `mtmd`), [Hugging Face transformers](https://github.com/huggingface/transformers).
+- **Compute**: Kaggle's free T4x2 kernels.
 
 ## Citation
 

@@ -1,8 +1,8 @@
 # TernaVLM Handoff
 
 **Repo:** https://github.com/shivpratapsinghpanwar/ternary-vlm (private)  
-**Kaggle:** shivpratap0007/ternavlm-runner (v5 smoke passed; v6 stage 1 failed on a download race; v7 = stage 1 retry)  
-**Status:** see "Current state" at the bottom (updated per session).
+**Kaggle:** shivpratap0007/ternavlm-runner (v7 = stage 1 session 1 done at step 4100; v8 = session 2)  
+**Status:** stage 1 at step 4100/9000 (loss ~1.06); see "Current state" at the bottom.
 
 ## What's Built
 
@@ -96,6 +96,10 @@ python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --qu
   train-00014 right after download. Root cause: both DDP ranks called hf_hub_download on the same file; the
   second caller unlinks the file the first just placed before re-downloading it. Fixed 2026-09-26 in data.py
   (rank 0 is the only downloader, writes `<shard>.done`, other ranks wait). Single-GPU machines were never affected.
+- 2026-09-27: kernel v7 (stage 1, session 1) SUCCEEDED: step 4100/9000 in 680 min, loss 1.78 -> ~1.06, 3.2 samp/s,
+  gpu 9.0 G, rss 4.8 G, zero non-finite losses. stage1/latest.pt (132 MB) fetched to
+  runs/20260926T070302Z_stage1/output/stage1/ and versioned into shivpratap0007/ternavlm-ckpt. One more session
+  (~8.5 h) finishes stage 1; kernel v8 = session 2 launched 2026-09-27 (see the run dir under runs/ for its name).
 - 2026-09-26: kernel v7 = stage 1, session 1 (retry) launched with `push.py stage1 --no-wait` (680 min budget).
   When it completes: `push.py --fetch runs/20260926T070302Z_stage1` versions stage1/latest.pt, then rerun
   `push.py stage1` to resume until the log says "finished". FIRST THING TO CHECK in its log: `samp/s` at
