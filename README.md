@@ -1,7 +1,7 @@
 # TernaVLM: a 1.58-bit vision-language model that runs on a CPU
 
 > **Ongoing research project. Paper in preparation.** This repository is public so the work can be followed as
-> it happens: the training pipeline is verified on Kaggle T4x2 and stage 1 (projector) is past step 4100/9000,
+> it happens: the training pipeline is verified on Kaggle T4x2 and stage 1 (projector) is past step 8166/9000,
 > but there are **no released weights, no benchmark numbers, and no claims yet**. Code, configs and docs will
 > change without notice until the paper is out. Code is licensed **Apache-2.0** (see [LICENSE](LICENSE)); released
 > weights, when they exist, will carry their own license. For collaboration, open an issue.
@@ -79,7 +79,7 @@ python scripts/export.py --ckpt ckpt/stage2/latest.pt --out export/ternavlm
 ## Roadmap
 
 - [x] smoke run on Kaggle (finite, decreasing loss)
-- [ ] stage 1 (4100/9000 steps, loss 1.78 -> 1.06) + stage 2
+- [ ] stage 1 (8166/9000 steps, loss 1.78 -> 1.03) + stage 2
 - [ ] ablations: plain fp16 LoRA (merge-and-requantize), projector-only, fp16 Qwen2.5-1.5B control
 - [ ] export to GGUF (TQ2_0) and run with llama.cpp `mtmd` on a laptop CPU and a Raspberry Pi 5
 - [ ] benchmark table: tokens/s and memory vs SmolVLM-256M / Moondream on the same CPU
