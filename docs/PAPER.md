@@ -496,7 +496,7 @@ future work includes [ternary projector/encoder, AnyRes tiling, larger instructi
 ### A.1 Reproducibility checklist
 
 - [ ] Code: `ternavlm/ternary.py` (quantizers, `TernaryLoRALinear`, `merge_all`), `ternavlm/vlm.py`,
-      `ternavlm/data.py`, `train.py`, `scripts/export.py`, `kaggle/run_stage.py`; commit hash [XXXXXXX].
+      `ternavlm/data.py`, `train.py`, `scripts/export.py`, `kaggle/push.py`; commit hash [XXXXXXX].
 - [ ] Configs: `configs/stage1.yaml`, `configs/stage2.yaml` reproduced verbatim in A.3; `smoke.yaml`
       for a 0.5 GPU-h sanity run.
 - [ ] Base checkpoints and revisions: `microsoft/bitnet-b1.58-2B-4T-bf16` [revision],
