@@ -1,8 +1,8 @@
 # TernaVLM Handoff
 
 **Repo:** https://github.com/shivpratapsinghpanwar/ternary-vlm (private)  
-**Kaggle:** shivpratap0007/ternavlm-runner (v8 = stage 1 at step 8166; v9 = final stage 1 session)  
-**Status:** stage 1 at step 8166/9000 (loss ~1.03), last session running; see "Current state" at the bottom.
+**Kaggle:** shivpratap0007/ternavlm-runner (v8 = stage 1 at step 8166; final session not yet run)  
+**Status:** stage 1 at step 8166/9000 (loss ~1.03); final ~2 h session pending; see "Current state" at the bottom.
 
 ## What's Built
 
@@ -98,7 +98,7 @@ python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --qu
   (rank 0 is the only downloader, writes `<shard>.done`, other ranks wait). Single-GPU machines were never affected.
 - 2026-09-27: kernel v8 (stage 1, session 2) SUCCEEDED: resumed at the exact cursor, step 8166/9000, loss ~1.03
   (plateau since ~step 4000 while the LR decays; normal for projector-only), 3.2 samp/s, no non-finite losses.
-  stage1/latest.pt versioned. Kernel v9 = session 3 for the last 834 steps (~2 h 20 min), launched 2026-09-27, run dir runs/20260927T163429Z_stage1; when done: `push.py --fetch runs/20260927T163429Z_stage1`.
+  stage1/latest.pt versioned. Kernel v9 (session 3) was CANCELLED while still queued on 2026-09-27 to free the GPU slot for another job; nothing lost. To finish stage 1 (834 steps, ~2 h 20 min on T4x2 or <2 h on the RTX 3080 with batch 4 / grad_accum 4): `PYTHONUTF8=1 python kaggle/push.py stage1`, then `--fetch` its run dir.
   Known weakness: a manually cancelled kernel loses its whole session (Kaggle discards cancelled output); add
   in-kernel checkpoint upload (HF Hub or Kaggle dataset, via a kernel secret) before stage 2.
 - 2026-09-27: kernel v7 (stage 1, session 1) SUCCEEDED: step 4100/9000 in 680 min, loss 1.78 -> ~1.06, 3.2 samp/s,
