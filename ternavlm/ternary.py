@@ -316,3 +316,56 @@ def flip_fraction(model: nn.Module, max_layers: int = 6) -> dict:
         fracs.append((base_q != new_q).float().mean().item())
         rel.append(((eff - m.weight.float()).norm() / m.weight.float().norm()).item())
     return {"flip_frac": sum(fracs) / len(fracs), "delta_rel": sum(rel) / len(rel), "n_layers": len(fracs)}
+
+
+@torch.no_grad()
+def transition_report(model: nn.Module, band: float = 0.05) -> dict:
+    """
+    Per-layer statistics of how the LoRA update moves ternary states: the raw material for studying LoRA under a
+    per-tensor absmean quantizer (logged at every checkpoint by train.py into ckpt/<stage>/diag.jsonl).
+
+    For every TernaryLoRALinear with r > 0, with s0 = mean|W|, s1 = mean|W + dBA|, states q0 = Q(W)/s0 and
+    q1 = Q(W + dBA)/s1 in {-1, 0, +1}:
+      flip_frac      fraction of weights whose ternary state changed
+      to_zero        fraction that went +-1 -> 0        from_zero  fraction that went 0 -> +-1
+      sign_flip      fraction that went +1 <-> -1 (rare: needs |delta| > s)
+      delta_rel      ||dBA|| / ||W||                     scale_ratio  s1 / s0
+      boundary_mass  fraction of |W|/s0 within +-band of the 0.5 rounding threshold (how many weights are one nudge
+                     away from flipping; explains why delta_rel ~1e-4 can flip a third of the states)
+      zero_frac0/1   sparsity of the base / adapted ternary tensor
+    Aggregates are parameter-weighted means over layers.
+    """
+    layers: dict = {}
+    tot = 0
+    agg = {}
+    for name, m in model.named_modules():
+        if not isinstance(m, TernaryLoRALinear) or m.r == 0 or not m.quantize_weight:
+            continue
+        w0 = m.weight.float()
+        w1 = m.effective_weight().float()
+        s0 = w0.abs().mean().clamp_min(1e-5)
+        s1 = w1.abs().mean().clamp_min(1e-5)
+        q0 = (w0 / s0).round().clamp_(-1, 1)
+        q1 = (w1 / s1).round().clamp_(-1, 1)
+        n = w0.numel()
+        changed = q0 != q1
+        r = {
+            "flip_frac": changed.float().mean().item(),
+            "to_zero": ((q0 != 0) & (q1 == 0)).float().mean().item(),
+            "from_zero": ((q0 == 0) & (q1 != 0)).float().mean().item(),
+            "sign_flip": ((q0 * q1) < 0).float().mean().item(),
+            "delta_rel": ((w1 - w0).norm() / w0.norm().clamp_min(1e-12)).item(),
+            "scale_ratio": (s1 / s0).item(),
+            "boundary_mass": (((w0.abs() / s0) - 0.5).abs() < band).float().mean().item(),
+            "zero_frac0": (q0 == 0).float().mean().item(),
+            "zero_frac1": (q1 == 0).float().mean().item(),
+            "numel": n,
+        }
+        layers[name] = r
+        tot += n
+        for k, v in r.items():
+            if k != "numel":
+                agg[k] = agg.get(k, 0.0) + v * n
+    out = {k: v / tot for k, v in agg.items()} if tot else {}
+    out.update({"n_layers": len(layers), "layers": layers})
+    return out

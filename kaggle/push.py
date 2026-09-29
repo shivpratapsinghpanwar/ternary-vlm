@@ -111,10 +111,10 @@ except Exception:
     status = "failed"
 finally:
     # export the checkpoint(s) to the kernel output root as <stage>/latest.pt
-    for p in glob.glob("ckpt/*/latest.pt"):
+    for p in glob.glob("ckpt/*/latest.pt") + glob.glob("ckpt/*/diag.jsonl"):
         st = p.split("/")[1]
         os.makedirs(f"/kaggle/working/{st}", exist_ok=True)
-        shutil.copy(p, f"/kaggle/working/{st}/latest.pt")
+        shutil.copy(p, f"/kaggle/working/{st}/{os.path.basename(p)}")
         print("exported", p, os.path.getsize(p) // 2**20, "MB", flush=True)
     with open("/kaggle/working/tv_status.json", "w") as f:
         json.dump({"status": status, "meta": META}, f)

@@ -1,7 +1,7 @@
 # TernaVLM: a 1.58-bit vision-language model that runs on a CPU
 
 > **Ongoing research project. Paper in preparation.** This repository is public so the work can be followed as
-> it happens: the training pipeline is verified on Kaggle T4x2 and stage 1 (projector) is past step 8166/9000,
+> it happens: the training pipeline is verified on Kaggle T4x2 and stage 1 (projector) is complete and stage 2 (ternary LoRA) is running,
 > but there are **no released weights, no benchmark numbers, and no claims yet**. Code, configs and docs will
 > change without notice until the paper is out. Code is licensed **Apache-2.0** (see [LICENSE](LICENSE)); released
 > weights, when they exist, will carry their own license. For collaboration, open an issue.
@@ -9,7 +9,8 @@
 Every small VLM today (SmolVLM, Moondream, FastVLM) ships in fp16 or int4/int8. BitNet-style
 **ternary** language models (weights in {-1, 0, +1}) already run fast on CPUs with integer-only
 kernels. Ternary VLMs exist (LLaVaOLMoBitnet1B, BitVLA, Ternary Bonsai; see docs/RELATED_WORK.md),
-but all of them update the full set of latent weights with QAT. This repo attaches a vision encoder to a
+and the published ones adapt the language model by training all of its latent weights (full fine-tuning or full QAT).
+This repo attaches a vision encoder to a
 pre-trained ternary LM and adapts it **parameter-efficiently, without leaving the ternary regime**: only a
 projector and LoRA adapters are trained, and the exported model is bit-for-bit the ternary model that was trained.
 
@@ -79,7 +80,8 @@ python scripts/export.py --ckpt ckpt/stage2/latest.pt --out export/ternavlm
 ## Roadmap
 
 - [x] smoke run on Kaggle (finite, decreasing loss)
-- [ ] stage 1 (8166/9000 steps, loss 1.78 -> 1.03) + stage 2
+- [x] stage 1 (9000 steps, loss 1.78 -> 1.02)
+- [ ] stage 2 (running)
 - [ ] ablations: plain fp16 LoRA (merge-and-requantize), projector-only, fp16 Qwen2.5-1.5B control
 - [ ] export to GGUF (TQ2_0) and run with llama.cpp `mtmd` on a laptop CPU and a Raspberry Pi 5
 - [ ] benchmark table: tokens/s and memory vs SmolVLM-256M / Moondream on the same CPU

@@ -236,3 +236,19 @@ def test_prequantize_matches_per_call_quantizer():
     assert torch.equal(a.train_weight(), b.train_weight())
     c = TernaryLoRALinear(nn.Linear(16, 8, bias=False), r=4)
     assert not c.prequantize()  # LoRA layers keep the latent weight
+
+
+def test_transition_report_counts_state_changes():
+    from ternavlm.ternary import transition_report
+    torch.manual_seed(0)
+    lin = TernaryLoRALinear(nn.Linear(32, 16, bias=False), r=4)
+    model = nn.Sequential(lin)
+    rep0 = transition_report(model)
+    assert rep0["n_layers"] == 1 and rep0["flip_frac"] == 0.0 and rep0["scale_ratio"] == 1.0  # B=0 -> no delta
+    assert 0.0 < rep0["boundary_mass"] < 1.0 and 0.0 <= rep0["zero_frac0"] <= 1.0
+    with torch.no_grad():
+        lin.lora_B.normal_(0, 0.5)  # a large delta must flip states and be seen in every counter
+    rep1 = transition_report(model)
+    assert rep1["flip_frac"] > 0 and rep1["delta_rel"] > 0
+    assert abs(rep1["flip_frac"] - (rep1["to_zero"] + rep1["from_zero"] + rep1["sign_flip"])) < 1e-6
+    assert transition_report(nn.Sequential(TernaryLoRALinear(nn.Linear(8, 8), r=0)))["n_layers"] == 0

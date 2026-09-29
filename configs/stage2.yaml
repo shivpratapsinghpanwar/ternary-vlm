@@ -18,12 +18,12 @@ data:
   shuffle_buffer: 800
 train:
   out_dir: ckpt/stage2
-  batch_size: 8
-  grad_accum: 4
+  batch_size: 4             # max_len 512 + r=32 on every linear: batch 4 keeps a T4 under ~12 GB
+  grad_accum: 8             # effective 32 per GPU, 64 with DDP on 2 GPUs (same as before)
   lr: 2.0e-4
   wd: 0.0
   warmup: 100
-  total_steps: 4500
+  total_steps: 2300         # 150k samples / 64 per step = 2343 steps: schedule must end with the data, not at 4500
   clip: 1.0
   grad_checkpointing: true
   log_every: 20

@@ -1,0 +1,343 @@
+shivpratapsinghpanwar/ternary-vlm
+is this novel or a copy
+
+I checked the repository itself and compared its stated method against the closest published work. Short answer: it is not a copy, but the broad idea “make a ternary VLM” is definitely not novel. Your potentially novel contribution is much narrower and more technical.
+
+Your repo itself actually acknowledges this: it identifies LLaVaOLMoBitnet1B, BitVLA, Ternary Bonsai, L4Q, and LR-QAT as prior work.
+
+What already existed before your project
+Idea	Already done?	Evidence
+Ternary LLM	Yes	BitNet
+Ternary VLM	Yes	LLaVaOLMoBitnet1B, Aug 2024
+BitNet + vision encoder	Yes	BitVLA, 2025
+Ternary		
+shivpratapsinghpanwar/ternary-vlm
+shivpratapsinghpanwar/ternary-vlm
+
+novel or a copy 
+
+I inspected the repository, its RELATED_WORK.md, the core TernaryLoRALinear implementation, and the closest prior papers/projects. My assessment is:
+
+Verdict
+
+It is not a copy. But it is also not novel in the broad sense of “a ternary VLM.”
+
+The potentially publishable novelty is the particular PEFT/QAT formulation and its application to a natively ternary VLM, not the overall VLM architecture.
+
+What is already known
+
+Your repository is built from several established components:
+
+BitNet b1.58 → ternary language-model weights.
+SigLIP2 → vision encoder.
+LLaVA-style projector + image-token insertion.
+Pixel shuffle → reducing vision tokens.
+LoRA → parameter-efficient adaptation.
+
+Your README explicitly identifies these dependencies and prior techniques.
+
+And ternary multimodal models already exist:
+
+LLaVaOLMoBitnet1B was published in August 2024 and demonstrated a ternary LLM combined with a vision encoder and projector.
+
+BitVLA was published in June 2025. Importantly, it uses BitNet b1.58 2B4T + SigLIP-L + MLP connector, which is extremely close to part of your architecture.
+
+And by 2026, Ternary-Bonsai also provides ternary multimodal models, although its architecture and training regime are substantially different from yours.
+
+So this claim would not be defensible:
+
+“We introduce the first ternary VLM.”
+
+That territory is already occupied.
+
+Where your work actually becomes interesting
+
+This part is much more specific.
+
+Your core operation is effectively:
+
+$$ W_{\mathrm{eff}}=W+sBA $$
+
+followed by
+
+$$ W_q=Q(W_{\mathrm{eff}}) $$
+
+and the forward pass uses the quantized result itself, rather than doing ordinary LoRA on a quantized base:
+
+$$ y=Q_a(x)Q_w(W+sBA)^T. $$
+
+Your implementation explicitly does this and uses an STE for the quantizer.
+
+That gives you the property you care about:
+
+the model trained during QAT and the exported ternary model use the same quantized weights.
+
+Your repository even tests that relationship bit-for-bit.
+
+That is a real technical distinction from ordinary:
+
+$$ Q(W)x + BAx $$
+
+LoRA.
+
+But here is the important problem
+
+You should not claim that the mathematical idea of “put LoRA inside the quantizer” is completely new.
+
+Two earlier methods are directly relevant:
+
+L4Q — 2024
+
+L4Q explicitly combines LoRA + quantization-aware training, with the low-rank update incorporated into the quantization process and producing a fully quantized model.
+
+LR-QAT — 2024
+
+LR-QAT also uses low-rank quantization-aware reparameterization, with the auxiliary low-rank parameters ultimately absorbed into the quantized weights so that inference has no additional adapter overhead.
+
+Your own RELATED_WORK.md correctly recognizes this and says your TernaryLoRALinear is structurally related to these approaches.
+
+So:
+
+“We invented quantization-aware LoRA where \(BA\) is inside the quantizer.”
+
+would be too strong.
+
+Then what is potentially novel?
+
+I would formulate the contribution much more narrowly:
+
+Your research question
+
+Can a pretrained natively ternary LLM be converted into a useful VLM using parameter-efficient adaptation while keeping the deployed language backbone strictly ternary and ensuring that the training-time and deployment-time quantized functions are identical?
+
+That combination is substantially more interesting.
+
+You are combining:
+
+$$ \text{native ternary LM} + \text{vision adaptation} + \text{PEFT} + \text{QAT-aware low-rank adaptation} + \text{exact ternary export} $$
+
+and, importantly, you are doing this without updating the full ternary backbone.
+
+Your repository currently describes exactly that design: frozen SigLIP2, trained projector, ternary LoRA on BitNet 2B, and exact ternary export.
+
+Your closest competitor is actually BitVLA
+
+This is the comparison I would focus on in the paper.
+
+	BitVLA	Your TernaVLM
+Ternary LM	BitNet b1.58 2B4T	BitNet b1.58 2B4T
+Vision encoder	SigLIP-L	SigLIP2
+Projector	MLP	MLP
+Multimodal	Yes	Yes
+Main task	VLA / robotics	General VLM
+LM adaptation	Training remaining model components	LoRA/QAT PEFT
+Vision encoder	Eventually ternarized	Frozen FP vision encoder
+Core contribution	1-bit VLA + ternary vision encoder	PEFT adaptation while retaining strict ternary LM
+Exact ternary training/deployment match	Not the main contribution	Central contribution
+
+BitVLA's paper says it starts with BitNet 2B4T and a full-precision vision encoder, then trains the connector and later performs further training; it subsequently introduces distillation-aware ternarization of the vision encoder.
+
+So your paper shouldn't pretend BitVLA doesn't exist. Instead, it becomes the most important baseline against which you distinguish your approach.
+
+Is your code a copy?
+
+From what I inspected, I see no evidence that the repository is simply a copied implementation of LLaVaOLMoBitnet1B or BitVLA.
+
+The repository has its own TernaryLoRALinear, ternary quantization/STE machinery, export/merge logic, tests, training pipeline, checkpoint handling, and Kaggle orchestration.
+
+However, I would not claim “no copied code anywhere” merely from web inspection. That's a source-code provenance question requiring a line-by-line comparison against the relevant repositories.
+
+What I can say is:
+
+Research idea: derivative combination, but potentially novel contribution.
+Architecture: largely assembled from existing components.
+Core quantization mechanism: builds directly on prior QAT/LoRA literature.
+Implementation: appears to contain substantial original engineering rather than being a straight copy.
+
+The biggest issue right now
+
+Your README currently says:
+
+“all of them update the full set of latent weights with QAT.”
+
+That sentence is risky. Your own related-work document is much more careful, but the README is making a broad claim.
+
+I'd change the scientific positioning from:
+
+“We created a new ternary VLM.”
+
+to something closer to:
+
+“We investigate parameter-efficient vision adaptation of a pretrained natively ternary language model, introducing a quantization-aware low-rank adaptation mechanism that preserves strict ternary deployment and eliminates train/deployment quantization mismatch.”
+
+That is much more defensible.
+
+And one thing will determine whether this is actually a paper
+
+Right now your repo explicitly says there are no released weights and no benchmark results yet.
+
+So at the moment, you have a research hypothesis and implementation, not yet a demonstrated scientific contribution.
+
+The experiment that would make the argument compelling is roughly:
+
+$$ \boxed{ \text{Plain LoRA} \quad vs\quad \text{LoRA + merge + requantization} \quad vs\quad \text{your QAT-LoRA} \quad vs\quad \text{full QAT} } $$
+
+while measuring:
+
+VLM accuracy + ternary mismatch + trainable parameters + GPU memory + CPU memory + CPU throughput.
+
+That ablation would tell us whether your method is merely a recombination of known ideas or whether it produces a meaningful new result.
+
+My current assessment:
+
+Not a copy. Not a “new ternary VLM” either. Potentially a legitimate novel research contribution centered on parameter-efficient, quantization-aware adaptation of a native ternary LM for VLMs—but the novelty has to be demonstrated experimentally, especially against BitVLA, L4Q, and LR-QAT.
+
+Yes—but not in its current scientific form. After re-checking the repository and the relevant 2024–2026 literature, I would classify it this way:
+
+My assessment
+State of TernaVLM	Tier-1 main conference
+Current repo / current contribution	No
+Same method + better engineering + benchmarks	Still weak
+Adds a genuinely new algorithmic idea or a strong new empirical finding	Potentially yes
+Current work as a Tier-2 / workshop paper	Much more defensible
+
+The reason is not the lack of a working implementation. It is novelty distance from existing work.
+
+Your repo's central operation is:
+
+$$ W_{\text{eff}} = W + sBA $$
+
+followed by
+
+$$ W_q = Q(W_{\text{eff}}) $$
+
+with STE, and then exact export of the quantized merged tensor.
+
+That is technically coherent, but the important problem is that QAT + low-rank adaptation is already established. L4Q introduced parameter-efficient QAT with LoRA in 2024, and LR-QAT independently developed low-rank QAT for LLMs.
+
+More importantly, LoTA-QAF was accepted to the NeurIPS 2025 main conference and specifically addresses lossless ternary adaptation/merging of quantized LLMs.
+
+So a reviewer asking:
+
+"What is fundamentally new here compared with L4Q, LR-QAT and LoTA-QAF?"
+
+is a very serious problem for a Tier-1 submission.
+
+The VLM part does not solve that by itself
+
+Ternary multimodal models already exist.
+
+LLaVaOLMoBitnet1B introduced a ternary multimodal LLM in 2024.
+
+BitVLA then used BitNet b1.58 2B4T + SigLIP and trained the model with QAT, producing a fully ternary VLA.
+
+Your own related-work document correctly identifies this as the central competitive issue: TernaVLM uses the same BitNet 2B4T backbone, but changes the adaptation strategy to projector + LoRA and studies exact ternary export/CPU deployment.
+
+That is a real difference, but at present it looks more like:
+
+existing QAT/PEFT idea + existing ternary VLM architecture + a new combination/application
+
+than:
+
+a fundamentally new learning method.
+
+For a Tier-1 main track, that distinction matters.
+
+What would make it Tier-1 caliber?
+
+The paper needs to answer a question that existing papers cannot already answer.
+
+For example:
+
+1. A genuinely new ternary adaptation algorithm
+
+Not just:
+
+$$ Q(W+BA) $$
+
+but some mechanism specifically addressing a problem caused by ternary discretization.
+
+For example, something theoretically or empirically justified around:
+
+ternary transition dynamics,
+zero-state instability,
+scale collapse,
+gradient starvation,
+LoRA rank versus ternary state transitions,
+how to efficiently move weights among \(-1,0,+1\),
+preserving BitNet's activation/weight statistics during multimodal adaptation.
+
+That would move the contribution from "application of QAT-PEFT" toward an actual new method.
+
+2. Or a strong new empirical result
+
+Suppose you demonstrate:
+
+$$ \text{your method} \approx \text{full QAT accuracy} $$
+
+while training, say, only 1–5% of parameters, using dramatically less GPU memory and compute, and then obtain a genuinely efficient CPU deployment.
+
+That could itself be interesting—but the comparison must be extremely strong.
+
+Your current planned ablations are going in the right direction:
+
+projector only
+ordinary FP LoRA
+merge + requantization
+your joint QAT-LoRA
+full QAT
+FP baseline
+
+The repo already lists these experiments as future work.
+
+But for Tier 1, I'd add L4Q / LR-QAT / LoTA-QAF-style baselines, not just your locally designed controls.
+
+There is another issue: your novelty claim is narrower than you currently frame it
+
+Your own related-work document has probably the most accurate description:
+
+parameter-efficient adaptation of a native ternary LLM to vision with exactly ternary export, plus controlled comparison and CPU/edge study.
+
+It even currently characterizes that as potentially workshop-sized rather than an obvious major conference contribution.
+
+I agree with that assessment for the current version.
+
+That is actually useful because it identifies what needs to change.
+
+Where I would place it today
+
+If you froze the project today, with the repo exactly as it stands:
+
+Tier 1 main conference:
+Not strong enough yet.
+
+Tier 2:
+Reasonable target once experiments are complete.
+
+Tier-1 workshop:
+Quite plausible once you have convincing experimental evidence.
+
+Tier 1 main conference after a substantial methodological contribution:
+Yes, that becomes a legitimate target.
+
+CVPR 2027 explicitly includes efficient/scalable vision and multimodal/foundation models, so the topical fit is certainly there. NeurIPS likewise covers multimodal models, deep learning, optimization, and efficient ML.
+
+So venue fit is not your bottleneck. Novelty is.
+
+The blunt scientific conclusion
+
+I would currently describe TernaVLM as:
+
+A technically competent and potentially useful combination of existing ideas, with a specific unexplored application to parameter-efficient adaptation of a BitNet ternary VLM.
+
+I would not yet call it a Tier-1-level research contribution.
+
+The interesting part is that you are actually quite close to having a stronger paper. The gap isn't "build a much bigger model." The gap is:
+
+$$ \boxed{\text{show something scientifically new about ternary adaptation}} $$
+
+rather than merely showing that your implementation works.
+
+And there is one especially important finding from the literature: LoTA-QAF already got a NeurIPS 2025 main-conference paper out of the ternary adaptation problem itself. That raises the novelty bar substantially for your work.
+
+If I were evaluating the manuscript scientifically, the first thing I would demand before calling it Tier-1-ready is a direct technical comparison against L4Q, LR-QAT, LoTA-QAF, BitVLA, and full-QAT, with an explicit statement of exactly what mathematical property your method adds beyond them.

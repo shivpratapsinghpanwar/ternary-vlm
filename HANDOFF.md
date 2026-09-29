@@ -1,8 +1,8 @@
 # TernaVLM Handoff
 
 **Repo:** https://github.com/shivpratapsinghpanwar/ternary-vlm (private)  
-**Kaggle:** shivpratap0007/ternavlm-runner (v8 = stage 1 at step 8166; final session not yet run)  
-**Status:** stage 1 at step 8166/9000 (loss ~1.03); final ~2 h session pending; see "Current state" at the bottom.
+**Kaggle:** shivpratap0007/ternavlm-runner (v10 finished stage 1; v11 = stage 2 session 1)  
+**Status:** stage 1 finished (9000 steps, loss 1.02). Stage 2 session 1 running.; see "Current state" at the bottom.
 
 ## What's Built
 
@@ -87,6 +87,17 @@ python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --qu
 - `HF_HUB_DISABLE_XET=1`; Python needs `C:/...` paths (Git-Bash `/c/...` paths fail inside Python).
 
 ## Current state
+
+- 2026-09-29: STAGE 1 FINISHED. Kernel v10 ran the last 834 steps: step 9000/9000, final loss ~1.02, no non-finite
+  losses; three sessions total (v7, v8, v10), ~25 GPU-machine-hours. stage1/latest.pt (132 MB, projector only)
+  versioned in shivpratap0007/ternavlm-ckpt and at runs/20260928T161735Z_stage1/output/stage1/latest.pt.
+- 2026-09-29: stage 2 prepared: configs/stage2.yaml now batch 4 x accum 8 (T4 memory headroom at max_len 512) and
+  total_steps 2300 so the cosine schedule ends with the 150k samples (was 4500 steps, which the stream could
+  never reach). train.py now appends `ckpt/<stage>/diag.jsonl` at every save: per-layer ternary transition
+  statistics (flip fraction, +-1->0, 0->+-1, sign flips, delta_rel, scale ratio, boundary mass, sparsity) from
+  `ternavlm.ternary.transition_report`. This is the data for the "what does LoRA do to ternary states" study,
+  the one route from a workshop paper to something stronger (see chatgpt_suggestions.txt and the reply in the
+  session notes). Kernel v11 = stage 2 session 1, launched 2026-09-29 (run dir noted below when known).
 
 - 2026-09-15: kernel v5 smoke PASSED: 100 steps, no non-finite loss, loss 1.86 -> ~1.3-1.5, gpu 7.1 G,
   rss flat at 4.4 G, 1.7 samp/s (r=8 joint LoRA, batch 4 x 2 GPUs), flip fraction 0.35-0.43 at lr 5e-4

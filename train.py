@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader
 
 from ternavlm.data import DataConfig, LlavaStream, build_image_processor, collate
 from ternavlm.vlm import TernaVLM, TernaVLMConfig
-from ternavlm.ternary import flip_fraction
+from ternavlm.ternary import flip_fraction, transition_report
 
 
 def ddp_setup():
@@ -54,13 +54,23 @@ def host_mem_gb() -> str:
         return "rss n/a"
 
 
-def save(path, model, opt, scaler, step, seen, data_state, cfg):
+def save(path, model, opt, scaler, step, seen, data_state, cfg, elapsed_min=None):
     raw = model.module if hasattr(model, "module") else model
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     torch.save({"model": raw.trainable_state_dict(), "opt": opt.state_dict(), "scaler": scaler.state_dict(),
                 "step": step, "seen": seen, "data": data_state, "cfg": cfg}, tmp)
     os.replace(tmp, path)
+    # ternary-transition diagnostics for the paper (LoRA layers only; a no-op in projector-only stages)
+    rep = transition_report(raw.lm)
+    if rep.get("n_layers"):
+        import json
+        with open(os.path.join(os.path.dirname(path), "diag.jsonl"), "a") as f:
+            f.write(json.dumps({"step": step, "seen": seen, "elapsed_min": elapsed_min, **rep}) + "
+")
+        print(f"[diag] step {step} flip {rep['flip_frac']:.3e} to0 {rep['to_zero']:.2e} from0 {rep['from_zero']:.2e} "
+              f"sign {rep['sign_flip']:.1e} drel {rep['delta_rel']:.2e} scale {rep['scale_ratio']:.4f} "
+              f"boundary {rep['boundary_mass']:.3f} zero {rep['zero_frac0']:.3f}->{rep['zero_frac1']:.3f}", flush=True)
 
 
 class Prefetch:
@@ -261,7 +271,7 @@ def main():
                   f"{gpu}{extra}", flush=True)
             running, tick = 0.0, time.time()
         if rank == 0 and step % tr.get("save_every", 500) == 0:
-            save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg)
+            save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg, (time.time() - t0) / 60)
         if step >= total or (time.time() - t0) > budget:
             break
     else:
@@ -269,7 +279,7 @@ def main():
             print(f"[data] stream exhausted after micro-step {i} (max_samples reached)")
 
     if rank == 0:
-        save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg)
+        save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg, (time.time() - t0) / 60)
         print(f"[done] step {step} saved to {ckpt_path}. "
               f"{'finished' if step >= total else 'time budget hit; rerun with --resume'}")
     if world > 1:
