@@ -66,8 +66,7 @@ def save(path, model, opt, scaler, step, seen, data_state, cfg, elapsed_min=None
     if rep.get("n_layers"):
         import json
         with open(os.path.join(os.path.dirname(path), "diag.jsonl"), "a") as f:
-            f.write(json.dumps({"step": step, "seen": seen, "elapsed_min": elapsed_min, **rep}) + "
-")
+            f.write(json.dumps({"step": step, "seen": seen, "elapsed_min": elapsed_min, **rep}) + "\n")
         print(f"[diag] step {step} flip {rep['flip_frac']:.3e} to0 {rep['to_zero']:.2e} from0 {rep['from_zero']:.2e} "
               f"sign {rep['sign_flip']:.1e} drel {rep['delta_rel']:.2e} scale {rep['scale_ratio']:.4f} "
               f"boundary {rep['boundary_mass']:.3f} zero {rep['zero_frac0']:.3f}->{rep['zero_frac1']:.3f}", flush=True)

@@ -97,7 +97,7 @@ python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --qu
   statistics (flip fraction, +-1->0, 0->+-1, sign flips, delta_rel, scale ratio, boundary mass, sparsity) from
   `ternavlm.ternary.transition_report`. This is the data for the "what does LoRA do to ternary states" study,
   the one route from a workshop paper to something stronger (see chatgpt_suggestions.txt and the reply in the
-  session notes). Kernel v11 = stage 2 session 1, launched 2026-09-29, run dir runs/20260929T172718Z_stage2; when done: `push.py --fetch runs/20260929T172718Z_stage2` then `push.py stage2` again until "finished".
+  session notes). Kernel v11 (stage 2) died at startup on a SyntaxError in train.py from the diagnostics edit (unit tests never imported train.py; tests/test_scripts_compile.py now guards every entry point). Fixed, CPU LoRA dry run verified the diag path; kernel v12 = stage 2 session 1 relaunched 2026-09-29.
 
 - 2026-09-15: kernel v5 smoke PASSED: 100 steps, no non-finite loss, loss 1.86 -> ~1.3-1.5, gpu 7.1 G,
   rss flat at 4.4 G, 1.7 samp/s (r=8 joint LoRA, batch 4 x 2 GPUs), flip fraction 0.35-0.43 at lr 5e-4
