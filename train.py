@@ -27,6 +27,7 @@ from torch.utils.data import DataLoader
 from ternavlm.data import DataConfig, LlavaStream, build_image_processor, collate
 from ternavlm.vlm import TernaVLM, TernaVLMConfig
 from ternavlm.ternary import flip_fraction, transition_report
+from ternavlm.sync import CheckpointSync
 
 
 def ddp_setup():
@@ -54,7 +55,7 @@ def host_mem_gb() -> str:
         return "rss n/a"
 
 
-def save(path, model, opt, scaler, step, seen, data_state, cfg, elapsed_min=None):
+def save(path, model, opt, scaler, step, seen, data_state, cfg, elapsed_min=None, sync=None):
     raw = model.module if hasattr(model, "module") else model
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -70,6 +71,8 @@ def save(path, model, opt, scaler, step, seen, data_state, cfg, elapsed_min=None
         print(f"[diag] step {step} flip {rep['flip_frac']:.3e} to0 {rep['to_zero']:.2e} from0 {rep['from_zero']:.2e} "
               f"sign {rep['sign_flip']:.1e} drel {rep['delta_rel']:.2e} scale {rep['scale_ratio']:.4f} "
               f"boundary {rep['boundary_mass']:.3f} zero {rep['zero_frac0']:.3f}->{rep['zero_frac1']:.3f}", flush=True)
+    if sync is not None:
+        sync.push(path, step, extra=[os.path.join(os.path.dirname(path), "diag.jsonl")])
 
 
 class Prefetch:
@@ -216,6 +219,9 @@ def main():
     accum = tr.get("grad_accum", 1)
     total = tr["total_steps"]
     ckpt_path = os.path.join(tr["out_dir"], "latest.pt")
+    sync = CheckpointSync(stage=os.path.basename(os.path.normpath(tr["out_dir"]))) if rank == 0 else None
+    if sync is not None:
+        print(f"[sync] off-machine checkpoint upload: {'to ' + sync.repo if sync.enabled else 'disabled (set TERNAVLM_HF_REPO and HF_TOKEN)'}", flush=True)
     budget = args.time_budget_min * 60
     model.train()
     opt.zero_grad(set_to_none=True)
@@ -270,7 +276,7 @@ def main():
                   f"{gpu}{extra}", flush=True)
             running, tick = 0.0, time.time()
         if rank == 0 and step % tr.get("save_every", 500) == 0:
-            save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg, (time.time() - t0) / 60)
+            save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg, (time.time() - t0) / 60, sync)
         if step >= total or (time.time() - t0) > budget:
             break
     else:
@@ -278,9 +284,11 @@ def main():
             print(f"[data] stream exhausted after micro-step {i} (max_samples reached)")
 
     if rank == 0:
-        save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg, (time.time() - t0) / 60)
+        save(ckpt_path, model, opt, scaler, step, seen, last_state, cfg, (time.time() - t0) / 60, sync)
         print(f"[done] step {step} saved to {ckpt_path}. "
               f"{'finished' if step >= total else 'time budget hit; rerun with --resume'}")
+        if sync is not None and sync.enabled:
+            sync.wait()  # let the final checkpoint finish uploading before the process exits
     if world > 1:
         torch.distributed.destroy_process_group()
 

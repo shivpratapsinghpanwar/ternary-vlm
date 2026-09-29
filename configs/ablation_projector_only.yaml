@@ -29,5 +29,5 @@ train:
   clip: 1.0
   grad_checkpointing: true
   log_every: 20
-  save_every: 200
+  save_every: 50            # ~45 min at stage-2 speed: a stop or cancel costs at most that
   workers: 2

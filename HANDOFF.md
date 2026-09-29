@@ -50,6 +50,16 @@ Watch for in the smoke log: `[warn] ... non-finite` (should be absent), `step N/
 `samp/s` (decides the stage-1 sample budget: stage1.yaml assumes >= 7 samp/s for 300k samples in ~12 h;
 lower it or accept more sessions if v5 is slower), `gpu xxG` < 14 G.
 
+## Checkpoint safety (added 2026-09-30)
+
+- All stage-2 / ablation configs save every 50 steps (~45 min at stage-2 speed).
+- `ternavlm/sync.py`: after each save, rank 0 uploads latest.pt + diag.jsonl to a private Hugging Face model repo in
+  a background thread. Enabled when `TERNAVLM_HF_REPO` (e.g. `<hf-user>/ternavlm-ckpt`) and `HF_TOKEN` (write
+  token) are set. Local/cloud GPU: export both. Kaggle: set `TERNAVLM_HF_REPO` locally before `push.py` and attach
+  a Kaggle secret named `HF_TOKEN` to the ternavlm-runner kernel once (kernel page > Add-ons > Secrets).
+  Without them training runs exactly as before and logs `[sync] ... disabled`.
+- Restore after a lost session: `huggingface-cli download <repo> stage2/latest.pt --local-dir ckpt/..`.
+
 ## Kaggle Setup
 
 - Kernel: shivpratap0007/ternavlm-runner; dataset: shivpratap0007/ternavlm-ckpt (auto-versioned on success)
