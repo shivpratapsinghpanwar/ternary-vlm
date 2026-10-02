@@ -2,7 +2,7 @@
 
 **Repo:** https://github.com/shivpratapsinghpanwar/ternary-vlm (private)  
 **Kaggle:** shivpratap0007/ternavlm-runner (v10 finished stage 1; v11 = stage 2 session 1)  
-**Status:** stage 1 finished (9000 steps, loss 1.02). Stage 2 session 1 running.; see "Current state" at the bottom.
+**Status:** stage 1 finished; stage 2 at step 939/2300.; see "Current state" at the bottom.
 
 ## What's Built
 
@@ -97,6 +97,16 @@ python scripts/infer.py --ckpt ckpt/stage1/latest.pt --image runs/_test.jpg --qu
 - `HF_HUB_DISABLE_XET=1`; Python needs `C:/...` paths (Git-Bash `/c/...` paths fail inside Python).
 
 ## Current state
+
+- 2026-10-02: kernel v12 (stage 2 session 1) SUCCEEDED: step 939/2300, loss 1.14 -> 1.10, 1.5 samp/s on T4x2,
+  9.3 G GPU, no non-finite losses; stage2/latest.pt + diag.jsonl versioned (runs/20260929T174029Z_stage2).
+  Remaining 1361 steps ~ 16 h on T4x2 (two more Kaggle sessions, or ~8-10 h on an RTX 4090).
+  MEASURED ternary transitions at step 939: 1.5% of states changed, split evenly +-1->0 (0.80%) and 0->+-1
+  (0.75%), zero sign flips, sparsity unchanged at 42.2%, scale drift 5e-6, delta_rel 1e-3; 29.3% of base weights
+  sit within +-0.05 of the 0.5 rounding threshold. gate_proj flips most (2.0%), v_proj least (0.9%).
+- CORRECTION 2026-10-02: the old `flip_fraction` metric compared quantized values, so tiny absmean-scale drift
+  counted every nonzero weight as flipped. The 35-53% "flip" figures from the smoke run and stage-2 logs are
+  that artifact, not a finding. Fixed to compare states (regression test added); transition_report was correct.
 
 - 2026-09-29: STAGE 1 FINISHED. Kernel v10 ran the last 834 steps: step 9000/9000, final loss ~1.02, no non-finite
   losses; three sessions total (v7, v8, v10), ~25 GPU-machine-hours. stage1/latest.pt (132 MB, projector only)

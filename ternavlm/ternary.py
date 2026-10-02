@@ -310,9 +310,12 @@ def flip_fraction(model: nn.Module, max_layers: int = 6) -> dict:
     step = max(1, len(layers) // max_layers)
     fracs, rel = [], []
     for m in layers[::step][:max_layers]:
-        base_q = ternary_quant(m.weight.float())
+        # Compare ternary STATES (sign of the quantized value), not quantized values: the absmean scale moves by
+        # ~1e-6 under LoRA, so every nonzero value differs by a hair while its state is unchanged. The value
+        # comparison used before 2026-10-02 therefore reported ~(1 - sparsity) ~ 0.35-0.55 instead of ~0.01.
+        base_q = torch.sign(ternary_quant(m.weight.float()))
         eff = m.effective_weight().float()
-        new_q = ternary_quant(eff)
+        new_q = torch.sign(ternary_quant(eff))
         fracs.append((base_q != new_q).float().mean().item())
         rel.append(((eff - m.weight.float()).norm() / m.weight.float().norm()).item())
     return {"flip_frac": sum(fracs) / len(fracs), "delta_rel": sum(rel) / len(rel), "n_layers": len(fracs)}

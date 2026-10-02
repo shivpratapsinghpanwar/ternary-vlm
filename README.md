@@ -81,7 +81,7 @@ python scripts/export.py --ckpt ckpt/stage2/latest.pt --out export/ternavlm
 
 - [x] smoke run on Kaggle (finite, decreasing loss)
 - [x] stage 1 (9000 steps, loss 1.78 -> 1.02)
-- [ ] stage 2 (running)
+- [ ] stage 2 (939/2300 steps)
 - [ ] ablations: plain fp16 LoRA (merge-and-requantize), projector-only, fp16 Qwen2.5-1.5B control
 - [ ] export to GGUF (TQ2_0) and run with llama.cpp `mtmd` on a laptop CPU and a Raspberry Pi 5
 - [ ] benchmark table: tokens/s and memory vs SmolVLM-256M / Moondream on the same CPU

@@ -252,3 +252,17 @@ def test_transition_report_counts_state_changes():
     assert rep1["flip_frac"] > 0 and rep1["delta_rel"] > 0
     assert abs(rep1["flip_frac"] - (rep1["to_zero"] + rep1["from_zero"] + rep1["sign_flip"])) < 1e-6
     assert transition_report(nn.Sequential(TernaryLoRALinear(nn.Linear(8, 8), r=0)))["n_layers"] == 0
+
+
+def test_flip_fraction_counts_states_not_scale_drift():
+    """A tiny delta that only nudges the absmean scale must report ~0 flips (the pre-2026-10-02 metric reported
+    ~(1 - sparsity) here) and agree with transition_report."""
+    from ternavlm.ternary import flip_fraction, transition_report
+    torch.manual_seed(0)
+    lin = TernaryLoRALinear(nn.Linear(64, 32, bias=False), r=4)
+    with torch.no_grad():
+        lin.lora_B.normal_(0, 1e-6)
+    model = nn.Sequential(lin)
+    ff = flip_fraction(model)["flip_frac"]
+    assert ff < 0.01
+    assert abs(ff - transition_report(model)["flip_frac"]) < 1e-9
